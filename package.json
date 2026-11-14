@@ -1,0 +1,36 @@
+{
+  "name": "plainpage",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PlainPage - rewrites any page into plain, easy language. Hybrid on-device + cloud AI with Firebase AI Logic.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:extension": "tsc --noEmit && vite build --mode extension",
+    "build:all": "npm run build && npm run build:extension",
+    "preview": "vite preview --outDir dist/web",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/make-icons.mjs",
+    "deploy": "npm run build && npx firebase-tools deploy --only hosting,firestore:rules,remoteconfig"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5.3.0",
+    "@fontsource/lexend": "^5.3.0",
+    "@fontsource/opendyslexic": "^5.3.0",
+    "firebase": "^13.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.7",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "parameters": {
+    "cloud_model": {
+      "defaultValue": { "value": "gemini-3.5-flash-lite" },
+      "description": "Cloud model used for fallback, long pages and languages the on-device model cannot write. Keep a no-billing model to stay free.",
+      "valueType": "STRING"
+    },
+    "device_max_chars": {
+      "defaultValue": { "value": "14000" },
+      "description": "Pages longer than this many characters are sent to the cloud model (prefer_in_cloud).",
+      "valueType": "NUMBER"
+    },
+    "device_chunk_chars": {
+      "defaultValue": { "value": "2800" },
+      "description": "Size of the pieces the on-device model rewrites, in characters.",
+      "valueType": "NUMBER"
+    },
+    "cloud_chunk_chars": {
+      "defaultValue": { "value": "20000" },
+      "description": "Size of the pieces the cloud model rewrites, in characters.",
+      "valueType": "NUMBER"
+    },
+    "device_languages": {
+      "defaultValue": { "value": "en,es,ja" },
+      "description": "Comma-separated language codes the on-device model can write. Add codes here when Chrome adds languages.",
+      "valueType": "STRING"
+    },
+    "words_enabled": {
+      "defaultValue": { "value": "true" },
+      "description": "Show the 'Words to know' list (structured JSON output).",
+      "valueType": "BOOLEAN"
+    },
+    "style_guidance": {
+      "defaultValue": { "value": "" },
+      "description": "Optional extra rule appended to the rewrite system prompt, for tuning tone without a release.",
+      "valueType": "STRING"
+    }
+  }
+}

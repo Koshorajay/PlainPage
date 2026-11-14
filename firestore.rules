@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// PlainPage keeps everything under users/{uid}. A signed-in user (anonymous
+// or Google) can only ever read and write their own data.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Reading preferences
+    match /users/{uid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['prefs', 'updatedAt'])
+        && request.resource.data.prefs is map;
+
+      // Saved pages (append-only: create, read, delete)
+      match /readings/{readingId} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.simplified is string
+          && request.resource.data.simplified.size() <= 250000
+          && request.resource.data.gist is string
+          && request.resource.data.gist.size() <= 2000
+          && request.resource.data.createdAt is number;
+      }
+
+      // Personal word list
+      match /words/{wordId} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && request.resource.data.term is string
+          && request.resource.data.term.size() <= 80
+          && request.resource.data.meaning is string
+          && request.resource.data.meaning.size() <= 600
+          && request.resource.data.createdAt is number;
+      }
+    }
+  }
+}
