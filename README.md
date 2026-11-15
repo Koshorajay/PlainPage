@@ -4,6 +4,8 @@
 
 It is a **hybrid AI** app built with the **Firebase AI Logic Hybrid Inference SDK**: it runs on Chrome's built-in on-device model when it can, and falls back to Gemini in the cloud when it must. It tells the reader which one it used, and why, every time.
 
+**Try it live: https://plainpage-31699.web.app**
+
 Built for the **#BuildHybridAI** hackathon. Platform: **Web (Chrome)**, shipped as a hosted web app and as a Chrome side-panel extension from one codebase.
 
 ---
