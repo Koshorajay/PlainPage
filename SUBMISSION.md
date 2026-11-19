@@ -42,6 +42,8 @@ Other SDK features used: streaming (`generateContentStream`), structured JSON ou
 
 The same hybrid design runs on both platforms through Firebase AI Logic: the JS SDK in Chrome (Gemini Nano through the Prompt API) and the Android SDK with `firebase-ai-ondevice` (Gemini Nano through AICore). Both apps use the same routing rules, the same prompts, the same cloud model and the same Remote Config keys, so one change in the console retunes both. The router adapts to each platform's on-device limits: Android's smaller window and validated languages are separate Remote Config values, so phones keep short English text local and hand the rest to the cloud.
 
+The web app also works in Safari on iPhone and in other mobile browsers, where it falls back to the cloud model because on-device inference on the web is only available in desktop Chrome. (This is not a native iOS app, so iOS is not selected as a platform.)
+
 ### Other Firebase products
 
 - **App Check** protects the API: reCAPTCHA v3 on the hosted site, a debug token on localhost and in the extension.

@@ -46,6 +46,8 @@ AI can rewrite these in plain language, but the usual tools send everything to a
 
 One change in the Firebase console (for example a new cloud model name) retunes both apps at once.
 
+**iPhone and other browsers:** the web app also works in Safari on iPhone (and can be added to the Home Screen), and in other mobile browsers. There it always runs in the cloud, because the web SDK's on-device model is only available in desktop Chrome. That is the hybrid fallback at work, not a native iOS app.
+
 ## Why this needs hybrid inference
 
 PlainPage does not just set `PREFER_ON_DEVICE` and hope. A small, tested router ([src/ai/router.ts](src/ai/router.ts)) picks one of the SDK's four inference modes for each job, and explains the choice to the reader before they press the button.
