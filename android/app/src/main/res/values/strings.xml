@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PlainPage</string>
+    <string name="share_label">Make it plain</string>
+    <string name="process_label">Make it plain</string>
+</resources>

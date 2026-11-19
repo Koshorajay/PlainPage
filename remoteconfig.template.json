@@ -1,38 +1,73 @@
 {
   "parameters": {
     "cloud_model": {
-      "defaultValue": { "value": "gemini-3.5-flash-lite" },
+      "defaultValue": {
+        "value": "gemini-3.5-flash-lite"
+      },
       "description": "Cloud model used for fallback, long pages and languages the on-device model cannot write. Keep a no-billing model to stay free.",
       "valueType": "STRING"
     },
     "device_max_chars": {
-      "defaultValue": { "value": "14000" },
+      "defaultValue": {
+        "value": "14000"
+      },
       "description": "Pages longer than this many characters are sent to the cloud model (prefer_in_cloud).",
       "valueType": "NUMBER"
     },
     "device_chunk_chars": {
-      "defaultValue": { "value": "2800" },
+      "defaultValue": {
+        "value": "2800"
+      },
       "description": "Size of the pieces the on-device model rewrites, in characters.",
       "valueType": "NUMBER"
     },
     "cloud_chunk_chars": {
-      "defaultValue": { "value": "20000" },
+      "defaultValue": {
+        "value": "20000"
+      },
       "description": "Size of the pieces the cloud model rewrites, in characters.",
       "valueType": "NUMBER"
     },
     "device_languages": {
-      "defaultValue": { "value": "en,es,ja" },
+      "defaultValue": {
+        "value": "en,es,ja"
+      },
       "description": "Comma-separated language codes the on-device model can write. Add codes here when Chrome adds languages.",
       "valueType": "STRING"
     },
     "words_enabled": {
-      "defaultValue": { "value": "true" },
+      "defaultValue": {
+        "value": "true"
+      },
       "description": "Show the 'Words to know' list (structured JSON output).",
       "valueType": "BOOLEAN"
     },
     "style_guidance": {
-      "defaultValue": { "value": "" },
+      "defaultValue": {
+        "value": ""
+      },
       "description": "Optional extra rule appended to the rewrite system prompt, for tuning tone without a release.",
+      "valueType": "STRING"
+    },
+    "android_device_max_chars": {
+      "defaultValue": {
+        "value": "9000"
+      },
+      "description": "Android: texts longer than this go to the cloud (Gemini Nano on phones has a ~4,000-token window).",
+      "valueType": "NUMBER"
+    },
+    "android_device_chunk_chars": {
+      "defaultValue": {
+        "value": "2200"
+      },
+      "description": "Android: size of the pieces Gemini Nano rewrites, in characters.",
+      "valueType": "NUMBER"
+    },
+    "android_device_languages": {
+      "defaultValue": {
+        "value": "en"
+      },
+      "description": "Android: comma-separated languages Gemini Nano can write (English and Korean are validated).",
       "valueType": "STRING"
     }
   }

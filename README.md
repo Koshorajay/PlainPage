@@ -6,7 +6,7 @@ It is a **hybrid AI** app built with the **Firebase AI Logic Hybrid Inference SD
 
 **Try it live: https://plainpage-31699.web.app**
 
-Built for the **#BuildHybridAI** hackathon. Platform: **Web (Chrome)**, shipped as a hosted web app and as a Chrome side-panel extension from one codebase.
+Built for the **#BuildHybridAI** hackathon. Platforms: **Web (Chrome)**, as a hosted web app and a Chrome side-panel extension, and **Android**, as a native app. Both use the same Firebase project, the same routing rules and the same Remote Config.
 
 ---
 
@@ -30,6 +30,21 @@ AI can rewrite these in plain language, but the usual tools send everything to a
 - **Works offline** with the on-device model (the web app is an installable PWA).
 - **Library**: save pages and build a personal word list, synced across devices.
 - **Chrome extension**: one click on the toolbar button reads the page you are on.
+
+## One SDK, two platforms
+
+| | Web (Chrome) | Android |
+| --- | --- | --- |
+| On-device model | Gemini Nano in Chrome (Prompt API) | Gemini Nano via Android AICore |
+| Cloud model | `gemini-3.5-flash-lite` | `gemini-3.5-flash-lite` |
+| SDK | Firebase AI Logic JS SDK, `InferenceMode` | Firebase AI Logic Android SDK, `OnDeviceConfig(mode = InferenceMode...)` |
+| Router | [src/ai/router.ts](src/ai/router.ts) | [android/.../ai/Router.kt](android/app/src/main/java/app/plainpage/ai/Router.kt), same rules |
+| Source shown to the reader | `response.inferenceSource` | `response.inferenceSource` |
+| Remote Config | shared cloud keys | same keys, plus `android_` keys for the phone's smaller on-device window |
+| How text arrives | paste, file, current tab (extension) | paste, **Share > PlainPage** from any app, **select text > PlainPage** in any app |
+| App Check | reCAPTCHA v3 / debug token | debug provider |
+
+One change in the Firebase console (for example a new cloud model name) retunes both apps at once.
 
 ## Why this needs hybrid inference
 
@@ -209,6 +224,46 @@ In Chrome, open `chrome://extensions`, turn on **Developer mode**, press **Load 
 
 The extension asks for the narrowest permission that works. A click grants access to that page only (`activeTab`); wider access is opt-in from the panel.
 
+## The Android app
+
+The native Android app lives in [android/](android). It is written in Kotlin with Jetpack Compose, and uses `firebase-ai` with `firebase-ai-ondevice` for hybrid inference.
+
+What it does: the same three reading levels, 12 languages, Private mode, routing banner, streaming sections with source badges, "In short" summary, reading-level meter and the "How this text was made" receipt. Text can be shared to PlainPage from any app, or selected in any app and sent through the text-selection menu.
+
+On-device limits are smaller on phones: Gemini Nano on Android takes about 4,000 tokens per request and is validated for English and Korean, so the router keeps short English text on the phone and sends the rest to the cloud. On-device needs a phone that supports Gemini Nano through AICore (see Google's ML Kit GenAI device list). On every other phone the app falls back to the cloud.
+
+### Build it
+
+Requirements: JDK 17 or newer and the Android SDK (platform 36).
+
+1. Register an Android app with package name `app.plainpage` in your Firebase project, and save its `google-services.json` as `android/app/google-services.json`:
+
+```bash
+firebase apps:create ANDROID "PlainPage Android" --package-name app.plainpage
+```
+
+2. Register an App Check debug token for that app and put it in `android/appcheck.properties` (this file is not committed):
+
+```bash
+firebase appcheck:debugtokens:create --app YOUR_ANDROID_APP_ID
+```
+
+```properties
+appCheckDebugToken=THE_TOKEN
+```
+
+3. Build and install the debug APK:
+
+```bash
+cd android && ./gradlew assembleDebug
+```
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+The debug build is used on purpose: the App Check debug provider only works in debuggable builds.
+
 ## Scripts
 
 | Command | What it does |
@@ -253,6 +308,9 @@ remoteconfig.template.json   Router settings, deployable
 | `device_chunk_chars` | `2800` | Piece size for the on-device model |
 | `cloud_chunk_chars` | `20000` | Piece size for the cloud model |
 | `device_languages` | `en,es,ja` | Languages the on-device model can write |
+| `android_device_max_chars` | `9000` | Android: texts longer than this go to the cloud |
+| `android_device_chunk_chars` | `2200` | Android: piece size for Gemini Nano on the phone |
+| `android_device_languages` | `en` | Android: languages Gemini Nano can write |
 | `words_enabled` | `true` | Show "Words to know" |
 | `style_guidance` | *(empty)* | Extra rule appended to the rewrite prompt |
 

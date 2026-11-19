@@ -6,9 +6,9 @@ Everything to paste into the #BuildHybridAI submission form. Replace the items i
 
 - **Project name:** PlainPage
 - **Tagline:** Makes any page easy to read. On your device when it can, in the cloud when it must.
-- **Platform:** Web (Chrome): hosted web app and Chrome extension
-- **Hosted URL:** https://YOUR_PROJECT_ID.web.app
-- **Repository:** https://github.com/YOUR_USERNAME/plainpage
+- **Platforms:** Web (Chrome): hosted web app and Chrome extension; Android: native app (select both on the form)
+- **Hosted URL:** https://plainpage-31699.web.app
+- **Repository:** https://github.com/Koshorajay/PlainPage
 - **Video:** YOUR_YOUTUBE_LINK
 - **New or existing project:** New. Built entirely during the submission period.
 
@@ -20,7 +20,7 @@ The documents people most need to understand are the hardest to read: a rental a
 
 ### What PlainPage does
 
-PlainPage rewrites any text or web page in plain language at three reading levels, keeping every fact, number, date and warning. It adds a three-point summary, a list of difficult words with simple meanings, and an explanation for any word the reader selects. A reading-level meter shows the result, for example "Grade 14 to Grade 8". The reader can change font (including dyslexia-friendly fonts), spacing and background, use a reading ruler, listen to the text, compare it with the original, and get the result in 12 languages. Pages and words can be saved to a library that syncs across devices. It ships as a hosted web app (an installable PWA that works offline) and as a Chrome side-panel extension, from one codebase.
+PlainPage rewrites any text or web page in plain language at three reading levels, keeping every fact, number, date and warning. It adds a three-point summary, a list of difficult words with simple meanings, and an explanation for any word the reader selects. A reading-level meter shows the result, for example "Grade 14 to Grade 8". The reader can change font (including dyslexia-friendly fonts), spacing and background, use a reading ruler, listen to the text, compare it with the original, and get the result in 12 languages. Pages and words can be saved to a library that syncs across devices. It ships on two platforms from one Firebase project: a hosted web app (an installable PWA that works offline) with a Chrome side-panel extension, and a native Android app. On Android, text can be shared to PlainPage from any app, or selected in any app and sent through the text-selection menu.
 
 ### How it uses Firebase AI Logic
 
@@ -37,6 +37,10 @@ On top of the SDK's fallback, PlainPage recovers mid-page in both directions. If
 Each section shows the `inferenceSource` the SDK reports, and a receipt at the end states how many parts ran on the device and how many in the cloud. "Nothing from this page left your device" is only shown when the cloud was never asked.
 
 Other SDK features used: streaming (`generateContentStream`), structured JSON output with one schema passed to both models (`responseSchema` and `responseConstraint`), and `initializeDeviceModel()` with download progress.
+
+### One SDK across Web and Android
+
+The same hybrid design runs on both platforms through Firebase AI Logic: the JS SDK in Chrome (Gemini Nano through the Prompt API) and the Android SDK with `firebase-ai-ondevice` (Gemini Nano through AICore). Both apps use the same routing rules, the same prompts, the same cloud model and the same Remote Config keys, so one change in the console retunes both. The router adapts to each platform's on-device limits: Android's smaller window and validated languages are separate Remote Config values, so phones keep short English text local and hand the rest to the cloud.
 
 ### Other Firebase products
 
@@ -64,6 +68,7 @@ PlainPage gives people who struggle with dense text a private, free way to under
 | 1:50 | Choose Tamil | "Languages the local model cannot write go to the cloud too." |
 | 2:00 | Turn on Private mode, turn off Wi-Fi, run again | "Private mode guarantees the page stays on the device. It even works offline." |
 | 2:20 | Extension: click toolbar button on a real web page | "The Chrome extension does the same for any web page, in one click." |
+| 2:30 | Android: select text in another app, choose "Make it plain" | "And on Android, the same hybrid SDK: select text in any app and PlainPage rewrites it, on the phone when it can." |
 | 2:35 | Firebase console: Remote Config parameters | "Remote Config tunes the router, App Check protects the API, Firestore and Auth sync the library." |
 | 2:50 | Receipt: "Nothing from this page left your device" | "PlainPage. On your device when it can, in the cloud when it must." |
 
