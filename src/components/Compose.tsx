@@ -4,6 +4,7 @@ import type { Conditions } from '../ai/engine';
 import { decideRoute } from '../ai/router';
 import { LANGUAGES, LEVELS } from '../config';
 import { htmlToText, toSourceDoc } from '../lib/extract';
+import { buildShield, describeEntries } from '../lib/shield';
 import {
   hasAllSites,
   NeedsAccessError,
@@ -56,6 +57,13 @@ export function Compose({ draft, onDraft, conditions, prefs, onPrefs, canRun, on
       }),
     [text, conditions],
   );
+
+  // Privacy shield preview: what will be hidden if this text goes to the cloud.
+  const shieldSummary = useMemo(() => {
+    if (!ready || decision.expected !== 'cloud') return null;
+    const entries = buildShield(normalizeText(text)).entries;
+    return entries.length ? { count: entries.length, text: describeEntries(entries) } : null;
+  }, [ready, decision.expected, text]);
 
   const setText = (value: string, title?: string, url?: string) => {
     const clipped = value.length > MAX_CHARS ? value.slice(0, MAX_CHARS) : value;
@@ -294,6 +302,12 @@ export function Compose({ draft, onDraft, conditions, prefs, onPrefs, canRun, on
           <div>
             <strong>{ready ? decision.label : 'Where will it run?'}</strong>
             <p>{ready ? decision.explain : 'Add some text and PlainPage will tell you before it starts.'}</p>
+            {shieldSummary && (
+              <p className="route-shield">
+                <LockIcon size={14} /> Privacy shield: {shieldSummary.text} will be replaced with placeholders on your
+                device first, so the cloud never sees {shieldSummary.count === 1 ? 'it' : 'them'}.
+              </p>
+            )}
           </div>
         </div>
         <button

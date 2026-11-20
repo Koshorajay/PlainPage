@@ -10,7 +10,7 @@ import {
 import { languageName, type RuntimeConfig } from '../config';
 import type { Source } from '../types';
 import type { HybridModel, ModelFactory, ModelSpec } from './engine';
-import { explainSystemPrompt, gistSystemPrompt, rewriteSystemPrompt, wordsSystemPrompt } from './prompts';
+import { checklistSystemPrompt, explainSystemPrompt, gistSystemPrompt, rewriteSystemPrompt, wordsSystemPrompt } from './prompts';
 
 /**
  * Firebase AI Logic hybrid inference: this is the only file that creates models.
@@ -47,6 +47,8 @@ function systemPromptFor(spec: ModelSpec, config: RuntimeConfig): string {
       return wordsSystemPrompt(language);
     case 'explain':
       return explainSystemPrompt(language);
+    case 'checklist':
+      return checklistSystemPrompt(language);
   }
 }
 

@@ -1,7 +1,8 @@
 import type { RuntimeConfig } from '../config';
-import type { DeviceStatus, Level, Section, Source, WordItem } from '../types';
+import { buildShield, describeEntries, type Shield } from '../lib/shield';
+import type { DeviceStatus, Level, Section, Source, TaskItem, WordItem } from '../types';
 import { chunkText } from './chunker';
-import { gistPrompt, explainPrompt, rewritePrompt, wordsPrompt } from './prompts';
+import { checklistPrompt, gistPrompt, explainPrompt, rewritePrompt, wordsPrompt } from './prompts';
 import { decideRoute, deviceCanWrite, type RouteDecision, type RouteMode } from './router';
 
 /**
@@ -22,7 +23,7 @@ import { decideRoute, deviceCanWrite, type RouteDecision, type RouteMode } from 
  * backed by Firebase AI Logic.
  */
 
-export type ModelKind = 'rewrite' | 'gist' | 'words' | 'explain';
+export type ModelKind = 'rewrite' | 'gist' | 'words' | 'explain' | 'checklist';
 
 export interface ModelSpec {
   kind: ModelKind;
@@ -64,6 +65,8 @@ export type EngineEvent =
   | { type: 'section'; index: number; patch: Partial<Section> }
   | { type: 'gist'; status: StepStatus; text?: string; source?: Source }
   | { type: 'words'; status: StepStatus; items?: WordItem[]; source?: Source }
+  /** Personal details that are replaced by placeholders before any cloud request. */
+  | { type: 'shield'; count: number; summary: string; preview: string }
   /** leftDevice: true if any of the page's text was sent (or may have been sent) to the cloud. */
   | { type: 'done'; stopped: boolean; leftDevice: boolean };
 
@@ -190,11 +193,16 @@ async function streamWithFallback(
   onText: (text: string, source: Source) => void,
   /** Called when this job sends text to the cloud as a retry. */
   onCloudAttempt?: () => void,
+  /** Privacy shield: the models only ever see placeholders; the reader sees the real values. */
+  shield?: Shield | null,
 ): Promise<StreamPiece & { fallback?: string }> {
   const spec = (mode: RouteMode): ModelSpec => ({ kind, mode, level: c.level, language: c.language });
+  const masked = shield ? shield.mask(input) : input;
+  const show = (text: string, source: Source) => onText(shield ? shield.restoreStreaming(text) : text, source);
+  const finish = (text: string) => (shield ? shield.restore(text) : text);
   try {
-    const result = await streamAll(factory(spec(decision.mode)), toPrompt(input), signal, onText);
-    return { ...result, fallback: sdkFallbackNote(decision, result.source) };
+    const result = await streamAll(factory(spec(decision.mode)), toPrompt(masked), signal, show);
+    return { text: finish(result.text), source: result.source, fallback: sdkFallbackNote(decision, result.source) };
   } catch (err) {
     if (isAbort(err) || signal?.aborted) throw err;
     const plan = planFallback(decision, c);
@@ -202,17 +210,24 @@ async function streamWithFallback(
     if (plan.mode === 'only_in_cloud') onCloudAttempt?.();
 
     const model = factory(spec(plan.mode));
-    const pieces = plan.rechunk ? chunkText(input, plan.rechunk).map((p) => p.text) : [input];
+    const pieces = plan.rechunk ? chunkText(masked, plan.rechunk).map((p) => p.text) : [masked];
     let done = '';
     let source: Source = 'cloud';
     for (const piece of pieces) {
       const prefix = done ? `${done}\n\n` : '';
-      const result = await streamAll(model, toPrompt(piece), signal, (text, src) => onText(prefix + text, src));
+      const result = await streamAll(model, toPrompt(piece), signal, (text, src) => show(prefix + text, src));
       done = prefix + result.text;
       source = result.source;
     }
-    return { text: done, source, fallback: plan.note };
+    return { text: finish(done), source, fallback: plan.note };
   }
+}
+
+/** Builds a shield when the cloud may see the text (any mode except ONLY_ON_DEVICE). */
+function shieldFor(decision: RouteDecision, text: string): Shield | null {
+  if (decision.mode === 'only_on_device') return null;
+  const shield = buildShield(text);
+  return shield.entries.length ? shield : null;
 }
 
 function parseWords(raw: string, original: string): WordItem[] {
@@ -272,6 +287,12 @@ export async function simplify(
   }));
   emit({ type: 'plan', decision, sections });
 
+  // Privacy shield: whenever the cloud may see this page, identifiers are replaced on the device first.
+  const shield = shieldFor(decision, text);
+  if (shield) {
+    emit({ type: 'shield', count: shield.entries.length, summary: describeEntries(shield.entries), preview: shield.mask(text).slice(0, 3000) });
+  }
+
   const results: string[] = new Array(sections.length).fill('');
   let next = 0;
 
@@ -299,6 +320,7 @@ export async function simplify(
           signal,
           (simplified, source) => emit({ type: 'section', index, patch: { simplified, source } }),
           cloudAttempted,
+          shield,
         );
         if (result.source === 'cloud') cloudAttempted();
         results[index] = result.text;
@@ -347,6 +369,7 @@ export async function simplify(
         signal,
         (gist, source) => emit({ type: 'gist', status: 'running', text: gist, source }),
         cloudAttempted,
+        shield,
       );
       if (result.source === 'cloud') cloudAttempted();
       emit({ type: 'gist', status: 'done', text: result.text, source: result.source });
@@ -361,9 +384,10 @@ export async function simplify(
     try {
       const sample = text.slice(0, onDevice ? config.deviceChunkChars : config.cloudChunkChars);
       const model = factory({ kind: 'words', mode: decision.mode, level: params.level, language: params.language });
-      const result = await model.generate(wordsPrompt(sample), signal);
+      const result = await model.generate(wordsPrompt(shield ? shield.mask(sample) : sample), signal);
       if (result.source === 'cloud') cloudAttempted();
-      emit({ type: 'words', status: 'done', items: parseWords(result.text, text), source: result.source });
+      const raw = shield ? shield.restore(result.text) : result.text;
+      emit({ type: 'words', status: 'done', items: parseWords(raw, text), source: result.source });
     } catch (err) {
       if (!isAbort(err)) emit({ type: 'words', status: 'error' });
     }
@@ -390,15 +414,87 @@ export async function explain(
     config: c.config,
   });
   if (decision.expected === 'blocked') throw new BlockedError(decision);
+  const shield = shieldFor(decision, `${term}\n${context}`);
   return streamWithFallback(
     'explain',
     context,
-    (ctx) => explainPrompt(term, ctx),
+    (ctx) => explainPrompt(shield ? shield.mask(term) : term, ctx),
     decision,
     // An explanation is one short prompt: never re-split it on fallback.
     { ...c, config: { ...c.config, deviceChunkChars: Math.max(c.config.deviceChunkChars, context.length + 1) } },
     factory,
     signal,
     onText,
+    undefined,
+    shield,
   );
+}
+
+/**
+ * Reads the tasks out of a model reply: one "- " line per task, optionally
+ * ending with " — deadline". "NONE" (or nothing usable) means no tasks.
+ */
+export function parseChecklist(raw: string): TaskItem[] {
+  const items: TaskItem[] = [];
+  const seen = new Set<string>();
+  for (const line of raw.split('\n')) {
+    const m = /^\s*(?:[-*•]|\d{1,2}[.)]|\[\s?\])\s+(.+)$/.exec(line);
+    if (!m) continue;
+    let task = m[1].replace(/\*\*/g, '').trim();
+    let when: string | undefined;
+    const split = /\s+(?:—|–|--|\|)\s+(?!.*\s(?:—|–|--|\|)\s)(.+)$/.exec(task);
+    if (split) {
+      when = split[1].trim();
+      task = task.slice(0, split.index).trim();
+    }
+    task = task.replace(/[.;]+$/, '');
+    if (!task || /^none\b/i.test(task) || task.length > 160) continue;
+    const key = task.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(when ? { task, when } : { task });
+    if (items.length >= 12) break;
+  }
+  return items;
+}
+
+/**
+ * Makes a to-do list from a text, on request. It is routed on its own: a long
+ * page rewritten in the cloud can still get its to-do list on the device.
+ */
+export async function makeChecklist(
+  text: string,
+  c: Conditions,
+  factory: ModelFactory,
+  onText: (text: string, source: Source) => void,
+  signal?: AbortSignal,
+): Promise<{ items: TaskItem[]; source: Source; fallback?: string; leftDevice: boolean }> {
+  const deviceBudget = c.config.deviceChunkChars * 2;
+  const input = text.length <= deviceBudget ? text : text.slice(0, c.config.cloudChunkChars);
+  const decision = decideRoute({
+    chars: input.length,
+    language: c.language,
+    privateMode: c.privateMode,
+    online: c.online,
+    device: c.device,
+    config: c.config,
+  });
+  if (decision.expected === 'blocked') throw new BlockedError(decision);
+  let leftDevice = decision.expected === 'cloud';
+  const result = await streamWithFallback(
+    'checklist',
+    input,
+    checklistPrompt,
+    decision,
+    { ...c, config: { ...c.config, deviceChunkChars: Math.max(c.config.deviceChunkChars, input.length + 1) } },
+    factory,
+    signal,
+    onText,
+    () => {
+      leftDevice = true;
+    },
+    shieldFor(decision, input),
+  );
+  if (result.source === 'cloud') leftDevice = true;
+  return { items: parseChecklist(result.text), source: result.source, fallback: result.fallback, leftDevice };
 }

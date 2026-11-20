@@ -1,6 +1,6 @@
 import type { EngineEvent, StepStatus } from './ai/engine';
 import type { RouteDecision } from './ai/router';
-import type { Level, SavedReading, Section, Source, SourceDoc, WordItem } from './types';
+import type { Level, SavedReading, Section, Source, SourceDoc, TaskItem, WordItem } from './types';
 
 /** Everything the reader screen shows for one page. */
 export interface Reading {
@@ -18,6 +18,10 @@ export interface Reading {
   finishedAt?: number;
   /** True if any of the page's text was sent, or may have been sent, to the cloud. */
   leftDevice?: boolean;
+  /** What the privacy shield hid from the cloud, if anything. */
+  shield?: { count: number; summary: string; preview: string };
+  /** The to-do list, made only when the reader asks for it. */
+  checklist: { status: StepStatus; items: TaskItem[]; source?: Source; partial?: string; error?: string; fallback?: string };
   /** Set when this reading was opened from the saved library. */
   saved?: SavedReading;
 }
@@ -28,6 +32,7 @@ export type ReadingAction =
   | { type: 'fail'; error: string }
   | { type: 'open-saved'; saved: SavedReading }
   | { type: 'mark-saved'; saved: SavedReading }
+  | { type: 'checklist'; patch: Partial<Reading['checklist']> }
   | { type: 'clear' };
 
 export function readingReducer(state: Reading | null, action: ReadingAction): Reading | null {
@@ -42,6 +47,7 @@ export function readingReducer(state: Reading | null, action: ReadingAction): Re
         sections: [],
         gist: { status: 'idle', text: '' },
         words: { status: 'idle', items: [] },
+        checklist: { status: 'idle', items: [] },
         status: 'running',
         startedAt: Date.now(),
       };
@@ -57,6 +63,7 @@ export function readingReducer(state: Reading | null, action: ReadingAction): Re
         sections: [{ index: 0, original: '', simplified: saved.simplified, status: 'done' }],
         gist: { status: saved.gist ? 'done' : 'idle', text: saved.gist },
         words: { status: 'idle', items: [] },
+        checklist: { status: 'idle', items: [] },
         status: 'done',
         startedAt: saved.createdAt,
         finishedAt: saved.createdAt,
@@ -66,6 +73,11 @@ export function readingReducer(state: Reading | null, action: ReadingAction): Re
 
     case 'mark-saved':
       return state ? { ...state, saved: action.saved } : state;
+
+    case 'checklist':
+      return state
+        ? { ...state, checklist: { ...state.checklist, ...action.patch } }
+        : state;
 
     case 'fail':
       return state ? { ...state, status: 'error', error: action.error, finishedAt: Date.now() } : state;
@@ -94,6 +106,8 @@ export function readingReducer(state: Reading | null, action: ReadingAction): Re
             ...state,
             words: { status: event.status, items: event.items ?? state.words.items, source: event.source },
           };
+        case 'shield':
+          return { ...state, shield: { count: event.count, summary: event.summary, preview: event.preview } };
         case 'done':
           return {
             ...state,

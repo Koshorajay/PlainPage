@@ -6,6 +6,8 @@ import {
   cleanOutput,
   explain,
   friendlyError,
+  makeChecklist,
+  parseChecklist,
   simplify,
   type EngineEvent,
   type HybridModel,
@@ -223,5 +225,102 @@ describe('helpers', () => {
   it('explains common failures in plain words', () => {
     expect(friendlyError(new Error('fetch-error: 429 quota exceeded'))).toMatch(/quota/);
     expect(friendlyError(new Error('AppCheck token invalid 401'))).toMatch(/App Check/);
+  });
+});
+
+describe('privacy shield in the pipeline', () => {
+  const letter =
+    'Dear Mr. Ramesh Kumar,\n\nRe: Account No. 4021 7788 1290\n\nPlease pay ₹2,450 by 30 November 2026. Call 1800 555 0199 or write to care@bank.example.';
+
+  /** A fake model that records every prompt and echoes the TEXT block back. */
+  function echoFactory(source: Source) {
+    const prompts: string[] = [];
+    const factory: ModelFactory = () => ({
+      async *stream(prompt) {
+        prompts.push(prompt);
+        const body = /"""\n([\s\S]*?)\n"""/.exec(prompt)?.[1] ?? '';
+        // Stream it in small pieces so placeholders arrive split across chunks.
+        for (let i = 0; i < body.length; i += 4) yield { text: body.slice(i, i + 4), source };
+      },
+      async generate(prompt) {
+        prompts.push(prompt);
+        return { text: '{"words":[]}', source };
+      },
+    });
+    return { factory, prompts };
+  }
+
+  it('never sends names, numbers or emails to the cloud, and restores them for the reader', async () => {
+    const { factory, prompts } = echoFactory('cloud');
+    const shown: string[] = [];
+    const { sections, events } = await run(
+      params({ text: letter, language: 'ta' }),
+      ((spec) => {
+        const model = factory(spec);
+        return {
+          ...model,
+          async *stream(prompt, signal) {
+            for await (const piece of model.stream(prompt, signal)) yield piece;
+          },
+        };
+      }) as ModelFactory,
+    );
+    for (const prompt of prompts) {
+      for (const secret of ['Ramesh', 'Kumar', '4021 7788 1290', '1800 555 0199', 'care@bank.example']) {
+        expect(prompt).not.toContain(secret);
+      }
+    }
+    expect(prompts.some((p) => p.includes('[NAME_1]') && p.includes('[ACCOUNT_1]'))).toBe(true);
+    // The reader sees the real values again, and never a half-streamed placeholder.
+    for (const e of events) if (e.type === 'section' && e.patch.simplified) shown.push(e.patch.simplified);
+    expect(shown.every((t) => !/\[[A-Z_]*$/.test(t))).toBe(true);
+    expect(sections[0].simplified).toContain('Ramesh Kumar');
+    expect(sections[0].simplified).toContain('1800 555 0199');
+    const shield = events.find((e) => e.type === 'shield');
+    expect(shield && shield.type === 'shield' && shield.count).toBe(4);
+  });
+
+  it('does not mask in private mode, where nothing leaves the device', async () => {
+    const { factory, prompts } = echoFactory('device');
+    const { events } = await run(params({ text: letter, privateMode: true }), factory);
+    expect(prompts[0]).toContain('Ramesh Kumar');
+    expect(events.some((e) => e.type === 'shield')).toBe(false);
+  });
+});
+
+describe('to-do list', () => {
+  it('reads tasks and deadlines from a model reply', () => {
+    const items = parseChecklist(
+      'Here is your list:\n- Pay ₹2,450 — by 30 November 2026\n- Call the helpline for a repayment plan – 9:00 AM to 6:00 PM\n* **Keep** your customer ID ready.\n- Pay ₹2,450 — by 30 November 2026',
+    );
+    expect(items).toEqual([
+      { task: 'Pay ₹2,450', when: 'by 30 November 2026' },
+      { task: 'Call the helpline for a repayment plan', when: '9:00 AM to 6:00 PM' },
+      { task: 'Keep your customer ID ready' },
+    ]);
+  });
+
+  it('returns nothing when the text asks for nothing', () => {
+    expect(parseChecklist('NONE')).toEqual([]);
+    expect(parseChecklist('- None')).toEqual([]);
+  });
+
+  it('keeps a short to-do list on the device even after a cloud rewrite', async () => {
+    const specs: string[] = [];
+    const factory: ModelFactory = (spec) => {
+      specs.push(spec.mode);
+      return {
+        async *stream() {
+          yield { text: '- Pay the bill — by Friday', source: 'device' as Source };
+        },
+        async generate() {
+          return { text: '', source: 'device' as Source };
+        },
+      };
+    };
+    const result = await makeChecklist('Please pay the bill by Friday.', params(), factory, () => {});
+    expect(specs).toEqual(['prefer_on_device']);
+    expect(result.items).toEqual([{ task: 'Pay the bill', when: 'by Friday' }]);
+    expect(result.leftDevice).toBe(false);
   });
 });

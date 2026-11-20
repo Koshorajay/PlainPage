@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Conditions, ModelFactory } from '../ai/engine';
+import { parseChecklist, type Conditions, type ModelFactory } from '../ai/engine';
 import type { RuntimeConfig } from '../config';
 import { languageNative, LEVELS } from '../config';
+import { checkFacts, mergeReports, type FactReport } from '../lib/factcheck';
 import { blockText, Blocks, toBlocks } from '../lib/markdown';
 import { readingMinutes, readingStats } from '../lib/readability';
 import { speakBlocks, speechSupported, type Speaker } from '../lib/tts';
@@ -16,6 +17,7 @@ import {
   ColumnsIcon,
   CopyIcon,
   DeviceIcon,
+  ListIcon,
   LockIcon,
   PlayIcon,
   PlusIcon,
@@ -35,6 +37,8 @@ interface Props {
   onRetry: () => void;
   onSave: () => Promise<void>;
   onSaveWord?: (term: string, meaning: string) => Promise<void>;
+  /** Makes the to-do list. Only called when the reader presses the button. */
+  onChecklist?: () => void;
 }
 
 export function Reader(props: Props) {
@@ -46,6 +50,8 @@ export function Reader(props: Props) {
   const [speakingKey, setSpeakingKey] = useState<string | null>(null);
   const [savedWords, setSavedWords] = useState<Set<string>>(new Set());
   const [rulerY, setRulerY] = useState<number | null>(null);
+  const [doneTasks, setDoneTasks] = useState<Set<number>>(new Set());
+  const [listCopied, setListCopied] = useState(false);
   const speaker = useRef<Speaker | null>(null);
   const article = useRef<HTMLElement>(null);
 
@@ -69,6 +75,34 @@ export function Reader(props: Props) {
   }, [running, plainText, reading.sections]);
 
   const english = reading.language === 'en';
+
+  // Fact check: every number, date, time and phone number from each original part
+  // should still be in its plain version. Deterministic and local, no AI.
+  const facts = useMemo(() => {
+    if (running) return null;
+    const perSection = reading.sections.map((s) =>
+      s.status === 'done' && s.original && s.simplified ? checkFacts(s.original, s.simplified, { english }) : null,
+    );
+    return { perSection, merged: mergeReports(perSection.filter((r): r is FactReport => r !== null)) };
+  }, [running, reading.sections, english]);
+
+  const checklist = reading.checklist;
+  useEffect(() => setDoneTasks(new Set()), [checklist.items]);
+  const partialTasks = useMemo(
+    () => (checklist.status === 'running' && checklist.partial ? parseChecklist(checklist.partial) : []),
+    [checklist.status, checklist.partial],
+  );
+
+  const copyList = async () => {
+    const lines = checklist.items.map((item) => `[ ] ${item.task}${item.when ? ` (${item.when})` : ''}`);
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setListCopied(true);
+      window.setTimeout(() => setListCopied(false), 1800);
+    } catch {
+      setListCopied(false);
+    }
+  };
 
   useEffect(() => () => speaker.current?.stop(), []);
 
@@ -295,6 +329,48 @@ export function Reader(props: Props) {
         </div>
       )}
 
+      {facts && facts.merged.total > 0 && (
+        <section className={`facts-card ${facts.merged.missing.length ? 'is-warn' : 'is-ok'}`} aria-label="Fact check">
+          <div className="facts-head">
+            <h2>Fact check</h2>
+            <span className="facts-score">
+              {facts.merged.kept} of {facts.merged.total} kept
+            </span>
+          </div>
+          {facts.merged.missing.length === 0 ? (
+            <p>
+              All {facts.merged.total} numbers, dates, times and phone numbers from the original are in the plain
+              version.
+            </p>
+          ) : (
+            <>
+              <p>
+                {facts.merged.missing.length === 1
+                  ? 'One detail from the original is not in the plain version. Check it before you rely on this page:'
+                  : `${facts.merged.missing.length} details from the original are not in the plain version. Check them before you rely on this page:`}
+              </p>
+              <ul className="facts-list">
+                {facts.merged.missing.map((fact, i) => (
+                  <li key={`${fact.key}-${i}`}>
+                    <strong dir="auto">{fact.display}</strong>
+                    <span dir="auto">{fact.context}</span>
+                  </li>
+                ))}
+              </ul>
+              {!compare && (
+                <button className="link-btn" onClick={() => setCompare(true)}>
+                  Compare with the original
+                </button>
+              )}
+            </>
+          )}
+          <p className="facts-note">
+            Checked on your device with simple rules, not AI.
+            {!facts.merged.checkedNames && ' Names of days and months are not checked for this language.'}
+          </p>
+        </section>
+      )}
+
       {compare && (
         <div className="compare-heads" aria-hidden="true">
           <span>Original</span>
@@ -329,6 +405,11 @@ export function Reader(props: Props) {
                 </div>
               )}
               {section.fallback && <p className="sec-note">{section.fallback}</p>}
+              {facts?.perSection[i] && facts.perSection[i]!.missing.length > 0 && (
+                <p className="sec-note sec-note--facts">
+                  Check against the original: {facts.perSection[i]!.missing.map((m) => m.display).join(', ')}
+                </p>
+              )}
             </div>
           </section>
         ))}
@@ -368,6 +449,81 @@ export function Reader(props: Props) {
         </section>
       )}
 
+      {!running && plainText && props.onChecklist && (
+        <section className="todo" aria-label="To-do list">
+          <div className="gist-head">
+            <h2>To-do list</h2>
+            {checklist.status === 'done' && checklist.source && <SourceBadge source={checklist.source} compact />}
+          </div>
+          {checklist.status === 'idle' && (
+            <>
+              <p className="todo-intro">Does this text ask you to do something? PlainPage can list the tasks and deadlines.</p>
+              <button className="btn btn--ghost btn--small" onClick={props.onChecklist}>
+                <ListIcon size={16} /> Make a to-do list
+              </button>
+            </>
+          )}
+          {checklist.status === 'running' && (
+            <>
+              {partialTasks.length > 0 ? (
+                <ul className="todo-list is-streaming">
+                  {partialTasks.map((item, i) => (
+                    <li key={i}>
+                      <span className="todo-box" aria-hidden="true" />
+                      <span className="todo-task" dir="auto">{item.task}</span>
+                      {item.when && <span className="todo-when" dir="auto">{item.when}</span>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="gist-wait">Finding things to do...</p>
+              )}
+            </>
+          )}
+          {checklist.status === 'done' && checklist.items.length === 0 && (
+            <p className="todo-intro">This text does not ask you to do anything.</p>
+          )}
+          {checklist.status === 'done' && checklist.items.length > 0 && (
+            <>
+              <ul className="todo-list">
+                {checklist.items.map((item, i) => (
+                  <li key={i} className={doneTasks.has(i) ? 'is-done' : undefined}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={doneTasks.has(i)}
+                        onChange={() =>
+                          setDoneTasks((current) => {
+                            const next = new Set(current);
+                            if (next.has(i)) next.delete(i);
+                            else next.add(i);
+                            return next;
+                          })
+                        }
+                      />
+                      <span className="todo-task" dir="auto">{item.task}</span>
+                      {item.when && <span className="todo-when" dir="auto">{item.when}</span>}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <button className="link-btn" onClick={() => void copyList()}>
+                {listCopied ? <CheckIcon size={15} /> : <CopyIcon size={15} />} {listCopied ? 'Copied' : 'Copy the list'}
+              </button>
+            </>
+          )}
+          {checklist.status === 'error' && (
+            <>
+              <p className="explain-error">{checklist.error}</p>
+              <button className="btn btn--ghost btn--small" onClick={props.onChecklist}>
+                Try again
+              </button>
+            </>
+          )}
+          {checklist.fallback && checklist.status === 'done' && <p className="sec-note">{checklist.fallback}</p>}
+        </section>
+      )}
+
       {!running && counts.done > 0 && !fromLibrary && (
         <section className="receipt" aria-label="How this page was made">
           <h2>How this page was made</h2>
@@ -398,6 +554,22 @@ export function Reader(props: Props) {
             {counts.failed > 0 && ` ${counts.failed} could not be rewritten and ${counts.failed === 1 ? 'is' : 'are'} shown as written.`}
             {elapsed !== null && ` Finished in ${elapsed} s.`}
           </p>
+          {reading.shield && reading.leftDevice && (
+            <div className="shield-note">
+              <p>
+                <strong>Privacy shield:</strong> {reading.shield.summary} {reading.shield.count === 1 ? 'was' : 'were'}{' '}
+                replaced with placeholders on your device before anything was sent to the cloud, and put back when the
+                answer came in.
+              </p>
+              <details>
+                <summary>Show what the cloud saw</summary>
+                <pre className="shield-preview" dir="auto">
+                  {reading.shield.preview}
+                  {reading.shield.preview.length >= 3000 ? '\n...' : ''}
+                </pre>
+              </details>
+            </div>
+          )}
           {counts.failed > 0 && (
             <button className="btn btn--ghost btn--small" onClick={props.onRetry}>
               Try again

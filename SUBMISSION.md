@@ -20,7 +20,7 @@ The documents people most need to understand are the hardest to read: a rental a
 
 ### What PlainPage does
 
-PlainPage rewrites any text or web page in plain language at three reading levels, keeping every fact, number, date and warning. It adds a three-point summary, a list of difficult words with simple meanings, and an explanation for any word the reader selects. A reading-level meter shows the result, for example "Grade 14 to Grade 8". The reader can change font (including dyslexia-friendly fonts), spacing and background, use a reading ruler, listen to the text, compare it with the original, and get the result in 12 languages. Pages and words can be saved to a library that syncs across devices. It ships on two platforms from one Firebase project: a hosted web app (an installable PWA that works offline) with a Chrome side-panel extension, and a native Android app. On Android, text can be shared to PlainPage from any app, or selected in any app and sent through the text-selection menu.
+PlainPage rewrites any text or web page in plain language at three reading levels, keeping every fact, number, date and warning. A fact check then compares every number, date, time and phone number with the original, on the device, and lists anything that went missing. A privacy shield hides names, phone numbers and account or ID numbers from the cloud. One button turns a letter or notice into a to-do list with deadlines. It adds a three-point summary, a list of difficult words with simple meanings, and an explanation for any word the reader selects. A reading-level meter shows the result, for example "Grade 14 to Grade 8". The reader can change font (including dyslexia-friendly fonts), spacing and background, use a reading ruler, listen to the text, compare it with the original, and get the result in 12 languages. Pages and words can be saved to a personal library in Firestore. It ships on two platforms from one Firebase project: a hosted web app (an installable PWA that works offline) with a Chrome side-panel extension, and a native Android app. On Android, text can be shared to PlainPage from any app, or selected in any app and sent through the text-selection menu.
 
 ### How it uses Firebase AI Logic
 
@@ -34,6 +34,8 @@ Every prompt runs through the Firebase AI Logic hybrid inference SDK. PlainPage 
 
 On top of the SDK's fallback, PlainPage recovers mid-page in both directions. If the local model fails on a section, that section is retried in the cloud. If the cloud runs out of quota, the section is re-split to fit the local model and finished on the device. Pages are split to fit each model: small streaming pieces on-device, large pieces in the cloud.
 
+**The device protects what the cloud sees.** When text has to go to the cloud, PlainPage's privacy shield first replaces names, phone numbers, emails and account, card or ID numbers with placeholders on the device, and puts them back when the answer arrives, even mid-stream and through translation. Readers can open "Show what the cloud saw". After every rewrite, a deterministic fact check compares numbers, dates, times and phone numbers with the original. In a test against the live cloud model, four requests for a sample bank letter contained none of its personal details, and the fact check reported 14 of 14 details kept. The to-do list is routed on its own, so a long page rewritten in the cloud can still get its to-do list on the device.
+
 Each section shows the `inferenceSource` the SDK reports, and a receipt at the end states how many parts ran on the device and how many in the cloud. "Nothing from this page left your device" is only shown when the cloud was never asked.
 
 Other SDK features used: streaming (`generateContentStream`), structured JSON output with one schema passed to both models (`responseSchema` and `responseConstraint`), and `initializeDeviceModel()` with download progress.
@@ -46,7 +48,7 @@ The web app also works in Safari on iPhone and in other mobile browsers, where i
 
 ### Other Firebase products
 
-- **App Check** protects the API: reCAPTCHA v3 on the hosted site, a debug token on localhost and in the extension.
+- **App Check** is enforced on the AI Logic API. For judging, the hosted site, extension and Android app use registered debug tokens, which the rules accept; the code also supports reCAPTCHA v3 for production.
 - **Remote Config** holds the router's settings (cloud model, length threshold, chunk sizes, on-device languages), so the hybrid balance can be retuned with no release when Chrome ships a larger model or a new language.
 - **Authentication** gives every visitor an anonymous account with zero sign-up, upgradeable to Google.
 - **Cloud Firestore** stores preferences, saved pages and the word list per user, with an offline cache and per-user security rules.
@@ -58,26 +60,28 @@ PlainPage gives people who struggle with dense text a private, free way to under
 
 ## Demo video script (under 3 minutes)
 
+Record on a computer where Chrome's on-device model is ready, so the green "On this device" moments are real. Use the **Bank letter** sample.
+
 | Time | Show | Say |
 | --- | --- | --- |
-| 0:00 | A dense rental agreement on screen | "Rental agreements, medicine leaflets, government notices. The documents that matter most are the hardest to read." |
-| 0:15 | PlainPage home, click "Rental agreement" | "PlainPage rewrites them in plain language. Before it starts, it tells you where the work will run." Point at the green "On this device" banner. |
-| 0:30 | Press "Make it plain", text streams in | "This runs on Gemini Nano inside Chrome, through Firebase AI Logic. Nothing leaves the laptop." |
-| 0:50 | Summary, reading-level meter, Words to know | "A summary, the reading level before and after, and the hard words explained." |
-| 1:05 | Select a word, press Explain | "Select any word to have it explained, on the device, instantly." |
-| 1:15 | Display panel: OpenDyslexic, spacing, dark; then Listen | "Readers set the page up for their own eyes, or listen instead." |
-| 1:30 | Paste a long document; banner turns blue | "A long page is different. PlainPage sends it to Gemini in the cloud for speed, and says so." Show the receipt. |
-| 1:50 | Choose Tamil | "Languages the local model cannot write go to the cloud too." |
-| 2:00 | Turn on Private mode, turn off Wi-Fi, run again | "Private mode guarantees the page stays on the device. It even works offline." |
-| 2:20 | Extension: click toolbar button on a real web page | "The Chrome extension does the same for any web page, in one click." |
-| 2:30 | Android: select text in another app, choose "Make it plain" | "And on Android, the same hybrid SDK: select text in any app and PlainPage rewrites it, on the phone when it can." |
-| 2:35 | Firebase console: Remote Config parameters | "Remote Config tunes the router, App Check protects the API, Firestore and Auth sync the library." |
-| 2:50 | Receipt: "Nothing from this page left your device" | "PlainPage. On your device when it can, in the cloud when it must." |
+| 0:00 | The bank letter sample in the text box | "Letters from banks, hospitals and councils are the hardest things to read, and the most important." |
+| 0:12 | The green "On this device" banner | "PlainPage tells you where it will run before it starts. This one fits on the laptop." |
+| 0:20 | Press "Make it plain", text streams in | "Gemini Nano in Chrome, through Firebase AI Logic. Nothing leaves the laptop." |
+| 0:35 | "In short" and the reading-level meter | "The three points that matter, and proof it is easier: grade 8 down to grade 3." |
+| 0:45 | The Fact check card, "14 of 14 kept" | "A simple version is only useful if it is accurate. Every amount, date and phone number is checked against the original, on the device." |
+| 0:58 | Press "Make a to-do list" | "One tap turns the letter into a to-do list with the deadline." |
+| 1:10 | Back, choose Tamil; banner turns blue with the Privacy shield line | "Tamil needs the cloud. Before anything is sent, the name, account number, phone and email are swapped for placeholders on the device." |
+| 1:25 | The Tamil result, then "Show what the cloud saw" | "The answer comes back in Tamil with the real details put back. This is everything the cloud saw." |
+| 1:45 | Turn on Private mode with Tamil selected | "Private mode never sends anything. If the device can't do the job, PlainPage says so instead of leaking." |
+| 1:55 | Display panel: OpenDyslexic, spacing; press Listen | "Fonts, spacing and read-aloud, for dyslexic readers." |
+| 2:10 | Extension: toolbar button on a real web page | "The Chrome extension does it for any web page in one click." |
+| 2:25 | Android: select text in another app, "Make it plain", then the to-do list | "And on Android, the same hybrid SDK: select text in any app." |
+| 2:45 | Firebase console: Remote Config parameters | "One Firebase project and one Remote Config tune both apps. PlainPage: on your device when it can, in the cloud when it must, and private either way." |
 
 ## Checklist before submitting
 
 - [ ] Firebase project created, `.env.local` filled in, `npm run deploy` done, hosted URL opens
-- [ ] App Check registered (reCAPTCHA v3 for the site, debug tokens for localhost and the extension)
+- [ ] App Check debug tokens registered for the web app and the Android app
 - [ ] On-device model downloaded in Chrome, and one page rewritten "On this device"
 - [ ] One long page rewritten "In the cloud"
 - [ ] Repository is public on GitHub, with the Apache 2.0 license showing in the About section

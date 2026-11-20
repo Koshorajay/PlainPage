@@ -264,6 +264,37 @@ code {
   color: var(--ink);
 }
 
+.steps {
+  margin: 0 0 12px;
+  padding-left: 1.2em;
+  color: var(--muted);
+}
+
+.steps li {
+  margin-bottom: 8px;
+}
+
+.steps li strong {
+  color: var(--ink);
+}
+
+.steps-url {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.steps-url code {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.steps-note {
+  font-size: 14px;
+}
+
 .popover-error {
   color: var(--error) !important;
   font-size: 14.5px;
@@ -1328,6 +1359,208 @@ select {
   border-block: 1.5px solid color-mix(in srgb, var(--accent) 35%, transparent);
   pointer-events: none;
   z-index: 25;
+}
+
+/* ---------- Fact check, to-do list, privacy shield ---------- */
+
+.facts-card,
+.todo {
+  margin-top: 14px;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 15.5px;
+}
+
+.facts-card.is-ok {
+  background: var(--device-soft);
+  border-color: color-mix(in srgb, var(--device) 28%, transparent);
+}
+
+.facts-card.is-warn {
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 32%, transparent);
+}
+
+.facts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.facts-card h2,
+.todo h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.facts-card.is-ok h2,
+.facts-card.is-ok .facts-score {
+  color: var(--device);
+}
+
+.facts-card.is-warn h2,
+.facts-card.is-warn .facts-score {
+  color: var(--warn);
+}
+
+.todo h2 {
+  color: var(--accent);
+}
+
+.facts-score {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.facts-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.facts-list li {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.facts-list span {
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+.facts-note {
+  margin-top: 8px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.sec-note--facts {
+  display: block;
+  width: fit-content;
+}
+
+.todo-intro {
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.todo-list {
+  list-style: none;
+  margin: 4px 0 10px;
+  padding: 0;
+}
+
+.todo-list li {
+  border-top: 1px solid var(--line);
+}
+
+.todo-list li:first-child {
+  border-top: 0;
+}
+
+.todo-list label,
+.todo-list.is-streaming li {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.todo-list input,
+.todo-box {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.todo-box {
+  border: 2px solid var(--line);
+  border-radius: 5px;
+}
+
+.todo-task {
+  flex: 1;
+  min-width: 180px;
+  font-size: 16.5px;
+}
+
+.todo-when {
+  align-self: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.todo-list li.is-done .todo-task {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.shield-note {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.shield-note strong {
+  color: var(--ink);
+}
+
+.shield-note summary {
+  margin-top: 8px;
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.shield-preview {
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.route-shield {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.route-shield svg {
+  flex: none;
+  margin-top: 3px;
 }
 
 /* ---------- Explain popover ---------- */

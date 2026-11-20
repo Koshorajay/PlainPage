@@ -19,6 +19,9 @@ AI can rewrite these in plain language, but the usual tools send everything to a
 ## What PlainPage does
 
 - **Rewrites text at three reading levels** (Easy, Plain, Clear), keeping every fact, number, date and warning.
+- **Fact check**: after every rewrite, each number, amount, date, time and phone number from the original is checked against the plain version, on the device, with no AI. Anything that went missing is listed with its context, so the reader knows exactly what to check.
+- **Privacy shield**: when text has to go to the cloud, names, phone numbers, emails, and account, card and ID numbers are replaced with placeholders on the device first, and put back when the answer arrives. The reader can open "Show what the cloud saw".
+- **To-do list, on request**: one button turns a letter or notice into a checklist of tasks with their deadlines. It is routed on its own, so it stays on the device whenever it can.
 - **"In short"**: the three most important points, at the top.
 - **"Words to know"**: difficult terms from the page with simple meanings (structured JSON output).
 - **Explain any word**: select a word or phrase in the text to get it explained in context.
@@ -28,7 +31,7 @@ AI can rewrite these in plain language, but the usual tools send everything to a
 - **12 output languages**, including Hindi, Tamil, Telugu and Bengali.
 - **Private mode**: a switch that guarantees the page never leaves the device.
 - **Works offline** with the on-device model (the web app is an installable PWA).
-- **Library**: save pages and build a personal word list, synced across devices.
+- **Library**: save pages and build a personal word list, stored in Firestore under an anonymous account (Google sign-in to sync across devices can be switched on).
 - **Chrome extension**: one click on the toolbar button reads the page you are on.
 
 ## One SDK, two platforms
@@ -42,7 +45,7 @@ AI can rewrite these in plain language, but the usual tools send everything to a
 | Source shown to the reader | `response.inferenceSource` | `response.inferenceSource` |
 | Remote Config | shared cloud keys | same keys, plus `android_` keys for the phone's smaller on-device window |
 | How text arrives | paste, file, current tab (extension) | paste, **Share > PlainPage** from any app, **select text > PlainPage** in any app |
-| App Check | reCAPTCHA v3 / debug token | debug provider |
+| App Check | debug token (hackathon allowance) | debug provider |
 
 One change in the Firebase console (for example a new cloud model name) retunes both apps at once.
 
@@ -75,6 +78,15 @@ flowchart TD
     I -- yes --> J[PREFER_IN_CLOUD<br/>device is the safety net]
     I -- no --> K[PREFER_ON_DEVICE]
 ```
+
+### The device protects what the cloud sees
+
+Hybrid inference usually means "on-device or cloud". PlainPage adds a third pattern: when the cloud does the work, the device still guards the reader.
+
+- **Before a cloud request**, the privacy shield ([src/lib/shield.ts](src/lib/shield.ts)) replaces personal details with placeholders such as `[NAME_1]` and `[ACCOUNT_1]`. Every prompt tells both models to keep placeholders unchanged, so they survive rewriting and even translation into Tamil. The device puts the real values back, including in streamed text, where half-received placeholders are hidden.
+- **After any rewrite**, the fact check ([src/lib/factcheck.ts](src/lib/factcheck.ts)) compares numbers, dates, times and phone numbers between the original and the plain version, and flags what is missing.
+
+Both are deterministic code, not AI, so they behave the same on every device and are covered by unit tests on both platforms. On a test run against the live cloud model, the bank-letter sample sent four requests (rewrite, summary, words, to-do list) and none of them contained the name, account number, phone number, email or customer ID; the plain version showed all of them again, and the fact check reported 14 of 14 details kept.
 
 On top of the SDK's own fallback, the engine ([src/ai/engine.ts](src/ai/engine.ts)) handles what the SDK leaves to the app:
 
@@ -124,7 +136,7 @@ Features of the hybrid SDK in use:
 | Product | What it does here | File |
 | --- | --- | --- |
 | **Firebase AI Logic** | All AI, on-device and cloud | [src/ai/models.ts](src/ai/models.ts) |
-| **App Check** | Protects the Gemini API: reCAPTCHA v3 on the hosted site, debug token on localhost and in the extension | [src/firebase/app.ts](src/firebase/app.ts) |
+| **App Check** | Enforced on Firebase AI Logic. This submission uses registered debug tokens (accepted by the hackathon) on the hosted site, localhost, the extension and Android; reCAPTCHA v3 is supported in code for a production setup | [src/firebase/app.ts](src/firebase/app.ts) |
 | **Remote Config** | Tunes the router with no release: cloud model name, length threshold, chunk sizes, on-device languages, prompt guidance | [src/firebase/remoteConfig.ts](src/firebase/remoteConfig.ts) |
 | **Authentication** | Anonymous account by default (zero sign-up), upgradeable to Google to sync | [src/firebase/store.ts](src/firebase/store.ts) |
 | **Cloud Firestore** | Reading preferences, saved pages, personal word list, with offline cache | [src/firebase/store.ts](src/firebase/store.ts), [firestore.rules](firestore.rules) |
@@ -139,7 +151,7 @@ Everything runs on free tiers. No credit card is needed at any step.
 | On-device inference (Gemini Nano in Chrome) | Free |
 | Cloud inference: Gemini Developer API free tier, `gemini-3.5-flash-lite` (a no-billing model) | Free within limits |
 | Firebase Spark plan: Hosting, Firestore, Authentication, Remote Config, App Check | Free within limits |
-| reCAPTCHA v3 site key for App Check | Free |
+| App Check debug tokens (reCAPTCHA v3 for production is also free) | Free |
 | Read-aloud: the browser's built-in speech | Free |
 | Fonts: bundled, SIL Open Font License | Free |
 | Chrome extension: loaded unpacked from this repo (no Chrome Web Store fee) | Free |
@@ -178,7 +190,7 @@ Open http://localhost:5173.
 4. **Authentication**: Build > Authentication > Sign-in method, enable **Anonymous**. Enable **Google** as well if you want sync across devices.
 5. **Firestore**: Build > Firestore Database > Create database, in production mode.
 6. **App Check**
-   - Hosted site: create a free **reCAPTCHA v3** key at https://www.google.com/recaptcha/admin for your `PROJECT_ID.web.app` domain. In Firebase, App Check > Apps > your web app > reCAPTCHA, paste the *secret* key. Put the *site* key in `.env.local` as `VITE_RECAPTCHA_SITE_KEY`.
+   - Hosted site, for the hackathon: put the same debug token in `.env.production.local`. The token becomes public in the deployed site, so use this only for judging. For production, create a free **reCAPTCHA v3** key at https://www.google.com/recaptcha/admin for your `PROJECT_ID.web.app` domain. In Firebase, App Check > Apps > your web app > reCAPTCHA, paste the *secret* key. Put the *site* key in `.env.local` as `VITE_RECAPTCHA_SITE_KEY`.
    - Localhost: generate a UUID (`uuidgen`), put it in a new file `.env.development.local` as `VITE_APPCHECK_DEBUG_TOKEN=<uuid>`, and register it under App Check > Apps > Manage debug tokens.
    - Then enforce it: App Check > APIs > Firebase AI Logic > Enforce.
 7. **Deploy** rules, Remote Config and the site:

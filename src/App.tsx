@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { friendlyError, simplify, type Conditions, type EngineEvent } from './ai/engine';
+import { friendlyError, makeChecklist, simplify, type Conditions, type EngineEvent } from './ai/engine';
 import { createModelFactory } from './ai/models';
 import { Compose } from './components/Compose';
 import { DisplayPanel, LibraryPanel, SetupNotice } from './components/Panels';
@@ -99,10 +99,41 @@ export default function App() {
     [conditions, factory],
   );
 
+  const checklistAbort = useRef<AbortController | null>(null);
+
+  // The to-do list is only made when the reader asks for it.
+  const runChecklist = useCallback(async () => {
+    if (!factory || !reading) return;
+    const text = simplifiedText(reading.sections);
+    if (!text.trim()) return;
+    checklistAbort.current?.abort();
+    const controller = new AbortController();
+    checklistAbort.current = controller;
+    dispatch({ type: 'checklist', patch: { status: 'running', items: [], partial: '', error: undefined, fallback: undefined } });
+    try {
+      const result = await makeChecklist(
+        text,
+        // A private reading stays private for its follow-up jobs too.
+        { ...conditions, language: reading.language, level: reading.level, privateMode: reading.privateMode || conditions.privateMode },
+        factory,
+        (partial, source) => dispatch({ type: 'checklist', patch: { partial, source } }),
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      dispatch({
+        type: 'checklist',
+        patch: { status: 'done', items: result.items, source: result.source, fallback: result.fallback, partial: undefined },
+      });
+    } catch (err) {
+      if (!controller.signal.aborted) dispatch({ type: 'checklist', patch: { status: 'error', error: friendlyError(err) } });
+    }
+  }, [factory, reading, conditions]);
+
   const stop = () => abort.current?.abort();
 
   const back = () => {
     abort.current?.abort();
+    checklistAbort.current?.abort();
     window.speechSynthesis?.cancel();
     dispatch({ type: 'clear' });
     window.scrollTo({ top: 0 });
@@ -173,6 +204,7 @@ export default function App() {
           onRetry={() => void start(reading.doc)}
           onSave={save}
           onSaveWord={canSave ? saveWordToLibrary : undefined}
+          onChecklist={factory ? () => void runChecklist() : undefined}
         />
       ) : (
         <Compose

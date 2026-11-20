@@ -20,7 +20,9 @@ import app.plainpage.ai.RuntimeConfig
 import app.plainpage.ai.Section
 import app.plainpage.ai.Source
 import app.plainpage.ai.decideRoute
+import app.plainpage.ai.TaskItem
 import app.plainpage.ai.friendlyError
+import app.plainpage.ai.makeChecklist
 import app.plainpage.ai.simplify
 import com.google.firebase.ai.DownloadStatus
 import com.google.firebase.ai.OnDeviceModelStatus
@@ -31,6 +33,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+data class ShieldSummary(val count: Int, val summary: String, val preview: String)
+
+enum class StepStatus { IDLE, RUNNING, DONE, ERROR }
+
+data class Checklist(
+    val status: StepStatus = StepStatus.IDLE,
+    val items: List<TaskItem> = emptyList(),
+    val partial: String = "",
+    val source: Source? = null,
+    val error: String? = null,
+    val fallback: String? = null,
+)
 
 data class Reading(
     val title: String,
@@ -45,6 +60,8 @@ data class Reading(
     val running: Boolean = true,
     val error: String? = null,
     val leftDevice: Boolean? = null,
+    val shield: ShieldSummary? = null,
+    val checklist: Checklist = Checklist(),
     val startedAt: Long = System.currentTimeMillis(),
     val finishedAt: Long? = null,
 )
@@ -157,8 +174,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stop() { job?.cancel() }
 
+    private var checklistJob: Job? = null
+
+    /** The to-do list is made only when the reader asks for it. */
+    fun makeTodoList() {
+        val s = _state.value
+        val reading = s.reading ?: return
+        val text = reading.sections.map { it.simplified.trim() }.filter { it.isNotEmpty() }.joinToString("\n\n")
+        if (text.isBlank()) return
+        checklistJob?.cancel()
+        updateReading { it.copy(checklist = Checklist(status = StepStatus.RUNNING)) }
+        // A private reading stays private for its follow-up jobs too.
+        val conditions = s.conditions.copy(language = reading.language, level = reading.level, privateMode = reading.privateMode || s.privateMode)
+        checklistJob = viewModelScope.launch {
+            try {
+                val result = makeChecklist(text, conditions, factory) { partial, source ->
+                    updateReading { it.copy(checklist = it.checklist.copy(partial = partial, source = source)) }
+                }
+                updateReading { it.copy(checklist = Checklist(StepStatus.DONE, result.items, "", result.source, null, result.fallback)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateReading { it.copy(checklist = Checklist(status = StepStatus.ERROR, error = friendlyError(e))) }
+            }
+        }
+    }
+
     fun back() {
         job?.cancel()
+        checklistJob?.cancel()
         _state.update { it.copy(reading = null) }
     }
 
@@ -168,6 +212,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             is EngineEvent.SectionUpdate -> r.copy(sections = r.sections.map { if (it.index == event.index) event.update(it) else it })
             is EngineEvent.Gist -> r.copy(gist = event.text.ifEmpty { r.gist }, gistSource = event.source ?: r.gistSource, gistRunning = event.running)
             is EngineEvent.Done -> r.copy(running = false, leftDevice = event.leftDevice, finishedAt = System.currentTimeMillis())
+            is EngineEvent.ShieldInfo -> r.copy(shield = ShieldSummary(event.count, event.summary, event.preview))
         }
     }
 

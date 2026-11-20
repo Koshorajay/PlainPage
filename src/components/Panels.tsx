@@ -15,6 +15,13 @@ import { IS_EXTENSION } from '../platform';
 import type { SavedReading, SavedWord } from '../types';
 import { CloseIcon, TrashIcon } from './icons';
 
+/**
+ * Google sign-in (to sync the library across devices) is shown only when the
+ * Google provider is enabled in Firebase Authentication and the build sets
+ * VITE_GOOGLE_SIGNIN=true. Extensions cannot use the sign-in popup.
+ */
+const GOOGLE_SIGN_IN = import.meta.env.VITE_GOOGLE_SIGNIN === 'true' && !IS_EXTENSION;
+
 function Drawer(props: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -243,9 +250,9 @@ export function LibraryPanel(props: {
               <>
                 <p>
                   Your library is saved under a guest account on this browser.
-                  {!IS_EXTENSION && ' Sign in to keep it and see it on your other devices.'}
+                  {GOOGLE_SIGN_IN && ' Sign in to keep it and see it on your other devices.'}
                 </p>
-                {!IS_EXTENSION && (
+                {GOOGLE_SIGN_IN && (
                   <button className="btn btn--ghost btn--small" onClick={() => void google()}>
                     Sign in with Google
                   </button>

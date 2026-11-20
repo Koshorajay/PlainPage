@@ -36,6 +36,12 @@ export const CloudIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const ListIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m4 7 1.6 1.6L8.5 5.7M4 14l1.6 1.6 2.9-2.9M11.5 7.5H20M11.5 14.5H20M11.5 19H17" />
+  </Icon>
+);
+
 export const LockIcon = (p: IconProps) => (
   <Icon {...p}>
     <rect x="5" y="10.5" width="14" height="10" rx="2.5" />

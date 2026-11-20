@@ -36,6 +36,7 @@ class FirebaseModelFactory(private val config: () -> RuntimeConfig) : ModelFacto
         val system = when (spec.kind) {
             ModelKind.REWRITE -> Prompts.rewriteSystem(spec.level, language, c.styleGuidance)
             ModelKind.GIST -> Prompts.gistSystem(language)
+            ModelKind.CHECKLIST -> Prompts.checklistSystem(language)
         }
         return ai.generativeModel(
             modelName = c.cloudModel,

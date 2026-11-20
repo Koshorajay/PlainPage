@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -59,7 +60,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.plainpage.MainViewModel
 import app.plainpage.Reading
 import app.plainpage.SAMPLES
+import app.plainpage.StepStatus
 import app.plainpage.UiState
+import app.plainpage.ai.FactCheck
+import app.plainpage.ai.Shield
+import app.plainpage.ai.parseChecklist
 import app.plainpage.ai.Chunker
 import app.plainpage.ai.DeviceStatus
 import app.plainpage.ai.Expected
@@ -218,7 +223,13 @@ private fun ComposeScreen(state: UiState, vm: MainViewModel) {
             Switch(checked = state.privateMode, onCheckedChange = vm::setPrivate)
         }
         Spacer(Modifier.size(14.dp))
-        RouteBanner(if (ready) decision else null, state.privateMode)
+        val shieldNote = remember(state.text, decision.expected) {
+            if (!ready || decision.expected != Expected.CLOUD) null
+            else Shield.build(Chunker.normalize(state.text)).takeIf { it.entries.isNotEmpty() }?.let {
+                "Privacy shield: ${it.describe()} will be replaced with placeholders on your phone first, so the cloud never sees ${if (it.entries.size == 1) "it" else "them"}."
+            }
+        }
+        RouteBanner(if (ready) decision else null, state.privateMode, shieldNote)
         Spacer(Modifier.size(12.dp))
         Button(
             onClick = vm::start, enabled = ready && decision.expected != Expected.BLOCKED,
@@ -251,7 +262,7 @@ private fun LanguagePicker(state: UiState, vm: MainViewModel) {
 }
 
 @Composable
-private fun RouteBanner(decision: RouteDecision?, privateMode: Boolean) {
+private fun RouteBanner(decision: RouteDecision?, privateMode: Boolean, shieldNote: String? = null) {
     val (fg, bg) = when (decision?.expected) {
         Expected.DEVICE -> Palette.device to Palette.deviceSoft
         Expected.CLOUD -> Palette.cloud to Palette.cloudSoft
@@ -269,6 +280,9 @@ private fun RouteBanner(decision: RouteDecision?, privateMode: Boolean) {
             decision?.explain ?: "Add some text and PlainPage will tell you before it starts.",
             fontSize = 15.sp, lineHeight = 21.sp, color = MaterialTheme.colorScheme.onSurface,
         )
+        shieldNote?.let {
+            Text(it, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = fg, modifier = Modifier.padding(top = 6.dp))
+        }
     }
 }
 
@@ -335,6 +349,12 @@ private fun ReaderScreen(reading: Reading, state: UiState, vm: MainViewModel) {
                         Meter("Words per sentence", "${before.sentenceLength.roundToInt()}", "${after.sentenceLength.roundToInt()}", Modifier.weight(1f))
                     }
                 }
+                val english = reading.language == "en"
+                val perSection = if (reading.running) emptyList() else reading.sections.map { s ->
+                    if (s.status == SectionStatus.DONE && s.original.isNotBlank() && s.simplified.isNotBlank()) FactCheck.check(s.original, s.simplified, english) else null
+                }
+                val facts = FactCheck.merge(perSection.filterNotNull())
+                if (!reading.running && facts.total > 0) FactCard(facts)
                 Spacer(Modifier.size(14.dp))
                 for (s in reading.sections) {
                     Column(Modifier.padding(bottom = 14.dp)) {
@@ -351,8 +371,13 @@ private fun ReaderScreen(reading: Reading, state: UiState, vm: MainViewModel) {
                             Text(it, color = Palette.warn, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.background(Palette.warnSoft, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
                         }
+                        perSection.getOrNull(s.index)?.takeIf { it.missing.isNotEmpty() }?.let { r ->
+                            Text("Check against the original: ${r.missing.joinToString(", ") { it.display }}", color = Palette.warn, fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp).background(Palette.warnSoft, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
+                        }
                     }
                 }
+                if (!reading.running && plain.isNotEmpty()) TodoCard(reading, vm, context)
                 if (!reading.running && done > 0) Receipt(reading, state)
                 Spacer(Modifier.size(28.dp))
             }
@@ -398,5 +423,104 @@ private fun Receipt(reading: Reading, state: UiState) {
             secs?.let { append(" Finished in $it s.") }
         }
         Text(note, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp, lineHeight = 21.sp)
+        val shield = reading.shield
+        if (shield != null && reading.leftDevice == true) {
+            var showSent by remember { mutableStateOf(false) }
+            Text(
+                "Privacy shield: ${shield.summary} ${if (shield.count == 1) "was" else "were"} replaced with placeholders on your phone before anything was sent to the cloud, and put back when the answer came in.",
+                fontSize = 15.sp, lineHeight = 21.sp,
+            )
+            TextButton(onClick = { showSent = !showSent }) { Text(if (showSent) "Hide what the cloud saw" else "Show what the cloud saw") }
+            if (showSent) Text(
+                shield.preview, fontSize = 13.sp, lineHeight = 19.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)).padding(12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun FactCard(facts: FactCheck.Report) {
+    val ok = facts.missing.isEmpty()
+    val fg = if (ok) Palette.device else Palette.warn
+    Column(
+        Modifier.fillMaxWidth().padding(top = 12.dp).background(if (ok) Palette.deviceSoft else Palette.warnSoft, RoundedCornerShape(16.dp)).padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("FACT CHECK", color = fg, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Spacer(Modifier.weight(1f))
+            Text("${facts.kept} of ${facts.total} kept", color = fg, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+        Spacer(Modifier.size(6.dp))
+        if (ok) {
+            Text("All ${facts.total} numbers, dates, times and phone numbers from the original are in the plain version.", fontSize = 15.sp, lineHeight = 21.sp)
+        } else {
+            Text(
+                if (facts.missing.size == 1) "One detail from the original is not in the plain version. Check it before you rely on this text:"
+                else "${facts.missing.size} details from the original are not in the plain version. Check them before you rely on this text:",
+                fontSize = 15.sp, lineHeight = 21.sp,
+            )
+            for (fact in facts.missing) Column(
+                Modifier.fillMaxWidth().padding(top = 8.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(10.dp),
+            ) {
+                Text(fact.display, fontWeight = FontWeight.Bold)
+                Text(fact.context, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+            }
+        }
+        Text(
+            "Checked on your phone with simple rules, not AI." + if (!facts.checkedNames) " Names of days and months are not checked for this language." else "",
+            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun TodoCard(reading: Reading, vm: MainViewModel, context: Context) {
+    val list = reading.checklist
+    var ticked by remember(list.items) { mutableStateOf(setOf<Int>()) }
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = 14.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)).padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("TO-DO LIST", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Spacer(Modifier.weight(1f))
+            if (list.status == StepStatus.DONE) list.source?.let { SourceBadge(it) }
+        }
+        Spacer(Modifier.size(6.dp))
+        when (list.status) {
+            StepStatus.IDLE -> {
+                Text("Does this text ask you to do something? PlainPage can list the tasks and deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
+                OutlinedButton(onClick = vm::makeTodoList, modifier = Modifier.padding(top = 8.dp)) { Text("Make a to-do list") }
+            }
+            StepStatus.RUNNING -> {
+                val partial = parseChecklist(list.partial)
+                if (partial.isEmpty()) Text("Finding things to do...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else for (item in partial) Text("• ${item.task}" + (item.whenText?.let { " ($it)" } ?: ""), modifier = Modifier.padding(vertical = 4.dp))
+            }
+            StepStatus.DONE -> {
+                if (list.items.isEmpty()) Text("This text does not ask you to do anything.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                list.items.forEachIndexed { i, item ->
+                    Row(Modifier.fillMaxWidth().clickable { ticked = if (i in ticked) ticked - i else ticked + i }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = i in ticked, onCheckedChange = { ticked = if (it) ticked + i else ticked - i })
+                        Column(Modifier.weight(1f)) {
+                            Text(item.task, fontSize = 16.sp, color = if (i in ticked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                            item.whenText?.let {
+                                Text(it, color = Palette.warn, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                                    modifier = Modifier.padding(top = 2.dp).background(Palette.warnSoft, CircleShape).padding(horizontal = 8.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
+                }
+                if (list.items.isNotEmpty()) TextButton(onClick = {
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("PlainPage to-do list", list.items.joinToString("\n") { "[ ] ${it.task}" + (it.whenText?.let { w -> " ($w)" } ?: "") }))
+                }) { Text("Copy the list") }
+                list.fallback?.let { Text(it, color = Palette.warn, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+            }
+            StepStatus.ERROR -> {
+                Text(list.error.orEmpty(), color = Palette.error, fontWeight = FontWeight.Bold)
+                OutlinedButton(onClick = vm::makeTodoList, modifier = Modifier.padding(top = 8.dp)) { Text("Try again") }
+            }
+        }
     }
 }

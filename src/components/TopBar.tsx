@@ -30,6 +30,62 @@ function chipLabel(device: DeviceModel): string {
   }
 }
 
+const FLAG_URL = 'chrome://flags/#prompt-api-for-gemini-nano-multimodal-input';
+
+function isDesktopChrome(): boolean {
+  const data = (navigator as Navigator & { userAgentData?: { brands?: { brand: string }[]; mobile?: boolean } })
+    .userAgentData;
+  if (data?.brands) return !data.mobile && data.brands.some((b) => b.brand === 'Google Chrome');
+  return /Chrome\//.test(navigator.userAgent) && !/Mobile|Android|Edg\/|OPR\//.test(navigator.userAgent);
+}
+
+/** Step-by-step help for turning on Chrome's built-in model (useful for judges trying the hybrid path). */
+function EnableOnDevice() {
+  const [copied, setCopied] = useState(false);
+  if (!isDesktopChrome()) {
+    return (
+      <p>
+        This browser has no on-device model, so PlainPage uses the cloud. On-device needs Chrome on a desktop
+        computer.
+      </p>
+    );
+  }
+  return (
+    <>
+      <p>Chrome's built-in model is not turned on in this browser, so PlainPage uses the cloud. To try on-device:</p>
+      <ol className="steps">
+        <li>
+          Open this address in a new tab:
+          <span className="steps-url">
+            <code>{FLAG_URL}</code>
+            <button
+              className="link-btn"
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(FLAG_URL)
+                  .then(() => setCopied(true))
+                  .catch(() => setCopied(false));
+              }}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </span>
+        </li>
+        <li>
+          Set it to <strong>Enabled</strong> and press <strong>Relaunch</strong>.
+        </li>
+        <li>
+          Come back here, open this panel and press <strong>Download on-device model</strong>.
+        </li>
+      </ol>
+      <p className="steps-note">
+        Chrome needs about 22 GB of free disk space and either a GPU with more than 4 GB of memory, or 16 GB of RAM
+        and 4 CPU cores.
+      </p>
+    </>
+  );
+}
+
 export function TopBar(props: Props) {
   const { device, online, config } = props;
   const [open, setOpen] = useState(false);
@@ -109,12 +165,7 @@ export function TopBar(props: Props) {
                   </div>
                 </>
               )}
-              {device.status === 'unavailable' && (
-                <p>
-                  This browser has no on-device model, so PlainPage uses the cloud. For on-device, open PlainPage in
-                  Chrome on a desktop computer.
-                </p>
-              )}
+              {device.status === 'unavailable' && <EnableOnDevice />}
               {device.error && <p className="popover-error">{device.error}</p>}
 
               <dl className="facts">

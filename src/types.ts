@@ -21,6 +21,12 @@ export interface Section {
   error?: string;
 }
 
+export interface TaskItem {
+  task: string;
+  /** Deadline or time, as the text states it. */
+  when?: string;
+}
+
 export interface WordItem {
   term: string;
   meaning: string;
